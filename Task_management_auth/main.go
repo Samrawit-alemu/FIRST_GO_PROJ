@@ -7,13 +7,15 @@ import (
 )
 
 func main() {
-	// connect to mongodb
-	data.ConnectToDB()
+	// Connect to the database when the application starts
+	data.ConnectDB()
+
+	data.EnsureUsernameUnique()
+
 	// setup the router
 	r := router.SetupRouter()
 
-	// start the server
-	log.Println("Starting server on:8080")
+	log.Println("Application setup complete. (Router to be added next)")
 	if err := r.Run(":8080"); err != nil {
 		log.Fatalf("Failed to run server: %v", err)
 	}
