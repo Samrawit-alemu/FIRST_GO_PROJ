@@ -10,6 +10,20 @@ import (
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
+type IUserController interface {
+	Register(c *gin.Context)
+	Login(c *gin.Context)
+	Promote(c *gin.Context)
+}
+
+type ITaskController interface {
+	CreateTask(c *gin.Context)
+	GetUserTasks(c *gin.Context)
+	GetTaskByID(c *gin.Context)
+	UpdateTask(c *gin.Context)
+	DeleteTask(c *gin.Context)
+}
+
 func toUserResponse(user *domain.User) dto.UserResponse {
 	return dto.UserResponse{
 		ID:       user.ID.Hex(),

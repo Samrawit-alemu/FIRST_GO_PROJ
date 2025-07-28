@@ -1,6 +1,7 @@
 package infrastructure
 
 import (
+	"log"
 	"net/http"
 	"strings"
 
@@ -43,6 +44,7 @@ func AuthMiddleware(jwtService IJWTService) gin.HandlerFunc {
 func RoleAuthMiddleware(requiredRole string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		role, exists := c.Get("role")
+		log.Printf("DEBUG: Role from context: %v (%T), Required role: %s", role, role, requiredRole)
 		if !exists || role.(string) != requiredRole {
 			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "Forbidden: insufficient permissions"})
 			return

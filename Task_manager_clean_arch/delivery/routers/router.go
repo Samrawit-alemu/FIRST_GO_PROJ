@@ -7,7 +7,10 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func SetupRouter(userController *controllers.UserController, taskController *controllers.TaskController, jwtService infrastructure.IJWTService) *gin.Engine {
+func SetupRouter(
+	userController controllers.IUserController,
+	taskController controllers.ITaskController,
+	jwtService infrastructure.IJWTService) *gin.Engine {
 	r := gin.Default()
 
 	// Public routes for authentication

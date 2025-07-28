@@ -74,7 +74,7 @@ func (r *mongoTaskRepository) Create(ctx context.Context, task *domain.Task) err
 
 func (r *mongoTaskRepository) GetAllByUserID(ctx context.Context, userID primitive.ObjectID) ([]domain.Task, error) {
 	var bsonTasks []datamodels.Task
-	cursor, err := r.collection.Find(ctx, bson.M{"userid": userID})
+	cursor, err := r.collection.Find(ctx, bson.M{"user_id": userID})
 	if err != nil {
 		return nil, err
 	}
