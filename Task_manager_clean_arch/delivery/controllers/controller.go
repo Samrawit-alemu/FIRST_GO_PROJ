@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"net/http"
+	"taskmanager/delivery/dto"
 	"taskmanager/domain"
 	"taskmanager/usecases"
 
@@ -9,7 +10,34 @@ import (
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
-// UserController handles HTTP requests for user-related actions.
+func toUserResponse(user *domain.User) dto.UserResponse {
+	return dto.UserResponse{
+		ID:       user.ID.Hex(),
+		Username: user.Username,
+		Role:     user.Role,
+	}
+}
+
+func toTaskResponse(task *domain.Task) dto.TaskResponse {
+	return dto.TaskResponse{
+		ID:          task.ID.Hex(),
+		Title:       task.Title,
+		Description: task.Description,
+		DueDate:     task.Duedate,
+		Status:      task.Status,
+		UserID:      task.UserID.Hex(),
+	}
+}
+
+func toTasksResponse(tasks []domain.Task) []dto.TaskResponse {
+	responses := make([]dto.TaskResponse, len(tasks))
+	for i, t := range tasks {
+		responses[i] = toTaskResponse(&t)
+	}
+	return responses
+}
+
+// --- USER CONTROLLER ---
 type UserController struct {
 	userUsecase usecases.IUserUsecase
 }
@@ -18,47 +46,38 @@ func NewUserController(userUsecase usecases.IUserUsecase) *UserController {
 	return &UserController{userUsecase: userUsecase}
 }
 
-// Register handles the POST /auth/register request.
 func (uc *UserController) Register(c *gin.Context) {
-	var input struct {
-		Username string `json:"username" binding:"required"`
-		Password string `json:"password" binding:"required"`
-	}
+	var input dto.RegisterRequest
 	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request: username and password are required"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
 		return
 	}
 
-	user, err := uc.userUsecase.Register(c.Request.Context(), input.Username, input.Password)
+	createdUser, err := uc.userUsecase.Register(c.Request.Context(), input.Username, input.Password)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	c.JSON(http.StatusCreated, gin.H{"message": "User registered successfully", "user_id": user.ID})
+	// Map the result to our response DTO
+	response := toUserResponse(createdUser)
+	c.JSON(http.StatusCreated, gin.H{"message": "User registered successfully", "user": response})
 }
 
-// Login handles the POST /auth/login request.
 func (uc *UserController) Login(c *gin.Context) {
-	var input struct {
-		Username string `json:"username" binding:"required"`
-		Password string `json:"password" binding:"required"`
-	}
+	var input dto.LoginRequest
 	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Username and password are required"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
 		return
 	}
-
 	token, err := uc.userUsecase.Login(c.Request.Context(), input.Username, input.Password)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
 		return
 	}
-
 	c.JSON(http.StatusOK, gin.H{"token": token})
 }
 
-// Promote handles the PUT /admin/promote/:id request.
 func (uc *UserController) Promote(c *gin.Context) {
 	userID := c.Param("id")
 	updatedUser, err := uc.userUsecase.Promote(c.Request.Context(), userID)
@@ -66,10 +85,10 @@ func (uc *UserController) Promote(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"message": "User promoted successfully", "user": updatedUser})
+	c.JSON(http.StatusOK, gin.H{"message": "User promoted", "user": toUserResponse(updatedUser)})
 }
 
-// TaskController handles HTTP requests for task-related actions.
+// --- TASK CONTROLLER ---
 type TaskController struct {
 	taskUsecase usecases.ITaskUsecase
 }
@@ -78,9 +97,8 @@ func NewTaskController(taskUsecase usecases.ITaskUsecase) *TaskController {
 	return &TaskController{taskUsecase: taskUsecase}
 }
 
-// CreateTask handles the POST /tasks request.
 func (tc *TaskController) CreateTask(c *gin.Context) {
-	var input domain.Task
+	var input dto.TaskRequest
 	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request data"})
 		return
@@ -88,48 +106,49 @@ func (tc *TaskController) CreateTask(c *gin.Context) {
 	userIDHex, _ := c.Get("user_id")
 	userID, _ := primitive.ObjectIDFromHex(userIDHex.(string))
 
-	task, err := tc.taskUsecase.CreateTask(c.Request.Context(), &input, userID)
+	// Map the DTO to the Domain model
+	domainTask := &domain.Task{
+		Title:       input.Title,
+		Description: input.Description,
+		Duedate:     input.DueDate,
+		Status:      input.Status,
+	}
+
+	createdTask, err := tc.taskUsecase.CreateTask(c.Request.Context(), domainTask, userID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create task"})
 		return
 	}
-	c.JSON(http.StatusCreated, task)
-}
 
-// GetUserTasks handles the GET /tasks request.
+	response := toTaskResponse(createdTask)
+	c.JSON(http.StatusCreated, response)
+}
 func (tc *TaskController) GetUserTasks(c *gin.Context) {
-	// The middleware has already validated the token. We get the user's ID from the context.
 	userIDHex, _ := c.Get("user_id")
 	userID, _ := primitive.ObjectIDFromHex(userIDHex.(string))
-
-	// Call the use case to get the tasks for this user.
 	tasks, err := tc.taskUsecase.GetUserTasks(c.Request.Context(), userID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve tasks"})
 		return
 	}
-
-	c.JSON(http.StatusOK, tasks)
+	c.JSON(http.StatusOK, toTasksResponse(tasks))
 }
 
-// GetTaskByID handles the GET /tasks/:id request.
 func (tc *TaskController) GetTaskByID(c *gin.Context) {
 	taskID := c.Param("id")
 	userIDHex, _ := c.Get("user_id")
 	userID, _ := primitive.ObjectIDFromHex(userIDHex.(string))
-
 	task, err := tc.taskUsecase.GetTaskByID(c.Request.Context(), taskID, userID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, task)
+	c.JSON(http.StatusOK, toTaskResponse(task))
 }
 
-// UpdateTask handles the PUT /tasks/:id request.
 func (tc *TaskController) UpdateTask(c *gin.Context) {
 	taskID := c.Param("id")
-	var input domain.Task
+	var input dto.TaskRequest
 	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request data"})
 		return
@@ -137,21 +156,25 @@ func (tc *TaskController) UpdateTask(c *gin.Context) {
 
 	userIDHex, _ := c.Get("user_id")
 	userID, _ := primitive.ObjectIDFromHex(userIDHex.(string))
+	domainTask := &domain.Task{
+		Title:       input.Title,
+		Description: input.Description,
+		Duedate:     input.DueDate,
+		Status:      input.Status,
+	}
 
-	updatedTask, err := tc.taskUsecase.UpdateTask(c.Request.Context(), taskID, &input, userID)
+	updatedTask, err := tc.taskUsecase.UpdateTask(c.Request.Context(), taskID, domainTask, userID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, updatedTask)
+	c.JSON(http.StatusOK, toTaskResponse(updatedTask))
 }
 
-// DeleteTask handles the DELETE /tasks/:id request.
 func (tc *TaskController) DeleteTask(c *gin.Context) {
 	taskID := c.Param("id")
 	userIDHex, _ := c.Get("user_id")
 	userID, _ := primitive.ObjectIDFromHex(userIDHex.(string))
-
 	err := tc.taskUsecase.DeleteTask(c.Request.Context(), taskID, userID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})

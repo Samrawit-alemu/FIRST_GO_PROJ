@@ -77,5 +77,5 @@ func (uc *taskUsecase) DeleteTask(ctx context.Context, taskID string, userID pri
 		return err
 	}
 
-	return uc.taskRepo.Delete(ctx, taskToDelete.Id)
+	return uc.taskRepo.Delete(ctx, taskToDelete.ID)
 }
